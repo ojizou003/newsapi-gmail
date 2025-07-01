@@ -11,8 +11,25 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import datetime
 from dotenv import load_dotenv
+import logging
 
-load_dotenv()
+# ロギングの設定
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("newsapi_app.log"),
+        logging.StreamHandler()
+    ]
+)
+
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    logging.error("GEMINI_API_KEY is not set.")
+    # ここではエラーを発生させず、後続の処理でチェックする
+genai.configure(api_key=GEMINI_API_KEY)
 
 # --- 設定項目 ---
 # RDD 2.3.2: 送信元/送信先メールアドレス
@@ -29,6 +46,7 @@ def get_ai_news():
     """
     api_key = os.environ.get("NEWS_API_KEY")
     if not api_key:
+        logging.error("NEWS_API_KEY is not set.")
         raise ValueError("NEWS_API_KEY is not set.")
 
     url = "https://newsapi.org/v2/everything"
@@ -39,9 +57,14 @@ def get_ai_news():
         "language": "jp",
         "apiKey": api_key
     }
-    response = requests.get(url, params=params)
-    response.raise_for_status()
-    return response.json()
+    try:
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        logging.info("NewsAPIからニュースを正常に取得しました。")
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        logging.error(f"NewsAPIからのニュース取得に失敗しました: {e}")
+        raise
 
 def get_article_text(url):
     """
@@ -56,9 +79,10 @@ def get_article_text(url):
         soup = BeautifulSoup(response.content, 'html.parser')
         paragraphs = soup.find_all('p')
         article_text = '\n'.join([p.get_text() for p in paragraphs])
+        logging.info(f"記事の本文を正常に取得しました: {url}")
         return article_text
     except requests.exceptions.RequestException as e:
-        print(f"記事の取得に失敗しました: {url}, Error: {e}")
+        logging.error(f"記事の取得に失敗しました: {url}, Error: {e}")
         return None
 
 def summarize_text_with_gemini(text):
@@ -67,18 +91,19 @@ def summarize_text_with_gemini(text):
     """
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
+        logging.error("GEMINI_API_KEY is not set.")
         raise ValueError("GEMINI_API_KEY is not set.")
     
-    genai.configure(api_key=api_key)
     model = genai.GenerativeModel('gemini-1.5-flash-latest')
     
     prompt = f"以下のニュース記事を日本語で200字程度に要約してください。\n\n---\n{text}\n---"
     
     try:
         response = model.generate_content(prompt)
+        logging.info("Geminiで要約を正常に生成しました。")
         return response.text
     except Exception as e:
-        print(f"Geminiでの要約に失敗しました: {e}")
+        logging.error(f"Geminiでの要約に失敗しました: {e}")
         return None
 
 def create_message(to, subject, message_text):
@@ -96,51 +121,61 @@ def send_message(service, user_id, message):
     """
     try:
         message = service.users().messages().send(userId=user_id, body=message).execute()
-        print(f"Message Id: {message['id']}")
+        logging.info(f"メールを正常に送信しました。Message Id: {message['id']}")
         return message
     except HttpError as error:
-        print(f"An error occurred: {error}")
+        logging.error(f"メール送信中にエラーが発生しました: {error}")
+        raise
 
 def get_gmail_service():
     """
     Gmail APIのサービスオブジェクトを取得する
     """
     creds = None
-    if os.path.exists("token.json"):
-        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+    if os.path.exists(os.path.join(os.path.dirname(__file__), "token.json")):
+        creds = Credentials.from_authorized_user_file(os.path.join(os.path.dirname(__file__), "token.json"), SCOPES)
+        logging.info("既存のtoken.jsonから認証情報を読み込みました。")
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
+            logging.info("認証情報をリフレッシュしました。")
         else:
-            flow = InstalledAppFlow.from_client_secrets_file("client_secret.json", SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file(os.path.join(os.path.dirname(__file__), "client_secret.json"), SCOPES)
             creds = flow.run_local_server(port=0)
-        with open("token.json", "w") as token:
+            logging.info("新しい認証情報を取得しました。")
+        with open(os.path.join(os.path.dirname(__file__), "token.json"), "w") as token:
             token.write(creds.to_json())
+            logging.info("認証情報をtoken.jsonに保存しました。")
     return build("gmail", "v1", credentials=creds)
 
 if __name__ == "__main__":
     try:
-        print("AIニュースの取得を開始します...")
+        logging.info("AIニュース自動要約＆メール送信アプリを開始します。")
+        
+        if not TO_EMAIL:
+            logging.error("TO_EMAILが.envファイルに設定されていません。処理を終了します。")
+            exit()
+
         news = get_ai_news()
         articles = news.get("articles", [])
         
         if not articles:
-            print("ニュース記事が見つかりませんでした。")
+            logging.info("ニュース記事が見つかりませんでした。処理を終了します。")
             exit()
 
         email_body = ""
         for article in articles:
             title = article.get('title', '（タイトル不明）')
             url = article.get('url', '（URL不明）')
-            print(f"\n処理中の記事: {title}")
+            logging.info(f"処理中の記事: {title}")
 
             article_text = get_article_text(url)
             summary = "（要約の生成に失敗しました）"
             if article_text and article_text.strip():
-                print("要約を生成中...")
+                logging.info("要約を生成中...")
                 summary = summarize_text_with_gemini(article_text) or summary
             else:
-                print("記事の本文を取得できなかったため、要約をスキップします。")
+                logging.warning("記事の本文を取得できなかったため、要約をスキップします。")
 
             email_body += f"■ 記事タイトル\n{title}\n\n"
             email_body += f"■ 日本語要約\n{summary}\n\n"
@@ -148,17 +183,21 @@ if __name__ == "__main__":
             email_body += "-" * 30 + "\n\n"
 
         if email_body:
-            print("メールの送信準備をしています...")
+            logging.info("メールの送信準備をしています...")
             service = get_gmail_service()
             today = datetime.date.today().strftime("%Y-%m-%d")
             subject = f"【自動配信】本日のAIニュース ({today})"
             message = create_message(TO_EMAIL, subject, email_body)
             
-            print(f"{TO_EMAIL} 宛にメールを送信します...")
+            logging.info(f"{TO_EMAIL} 宛にメールを送信します...")
             send_message(service, "me", message)
-            print("メールの送信が完了しました。")
+            logging.info("メールの送信が完了しました。")
         else:
-            print("送信するニュースがありませんでした。")
+            logging.info("送信するニュースがありませんでした。")
 
     except (ValueError, requests.exceptions.RequestException, HttpError) as e:
-        print(f"エラーが発生しました: {e}")
+        logging.error(f"アプリケーション実行中にエラーが発生しました: {e}", exc_info=True)
+    except Exception as e:
+        logging.critical(f"予期せぬ致命的なエラーが発生しました: {e}", exc_info=True)
+    finally:
+        logging.info("AIニュース自動要約＆メール送信アプリを終了します。")
