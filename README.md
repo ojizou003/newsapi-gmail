@@ -26,7 +26,7 @@ cd newsapi-gmail
 `uv` を使用して依存関係をインストールします。
 
 ```bash
-uv pip sync
+uv sync
 ```
 
 ### 3. APIキーと認証情報の準備
@@ -73,15 +73,11 @@ uv run python main.py
 
 毎日定時に自動実行するには、`crontab`を設定します。
 
-1.  `uv`コマンドのフルパスを確認します。
-    ```bash
-    which uv
-    ```
-2.  `crontab`の編集画面を開きます。
+1.  `crontab`の編集画面を開きます。
     ```bash
     crontab -e
     ```
-3.  以下の行を追加します。`[uvコマンドのフルパス]`と`[ログファイルのフルパス]`は、ご自身の環境に合わせて置き換えてください。
+2.  以下の行を追加します。`[pythonコマンドのフルパス]`と`[ログファイルのフルパス]`は、ご自身の環境に合わせて置き換えてください。
 
     ```cron
     0 6 * * * /path/to/your/project/.venv/bin/python /path/to/your/project/main.py >> /path/to/your/project/newsapi_app.log 2>&1
