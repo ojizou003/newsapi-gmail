@@ -51,10 +51,12 @@ def get_ai_news():
 
     url = "https://newsapi.org/v2/everything"
     params = {
-        "q": '"AI" OR "人工知能" OR "機械学習"',
-        "sortBy": "publishedAt",
+        # "q": '"AI" OR "人工知能" OR "機械学習"',
+        "q": '"AI"',
+        # "sortBy": "publishedAt",
+        "sortBy": "popularity",
         "pageSize": 5,
-        "language": "jp",
+        # "language": "jp",
         "apiKey": api_key
     }
     try:

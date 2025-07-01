@@ -84,7 +84,7 @@ uv run python main.py
     ```
     例:
     ```cron
-    0 6 * * * /home/ojizou003/works/newsapi-gmail/.venv/bin/python /home/ojizou003/works/newsapi-gmail/main.py >> /home/ojizou003/works/newsapi-gmail/newsapi_app.log 2>&1
+    0 6 * * * /home/ojizou003/app/newsapi-gmail/.venv/bin/python /home/ojizou003/app/newsapi-gmail/main.py >> /home/ojizou003/app/newsapi-gmail/newsapi_app.log 2>&1
     ```
 
 ## ログファイル
